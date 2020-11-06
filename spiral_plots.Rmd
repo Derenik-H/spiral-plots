@@ -1,0 +1,302 @@
+---
+title: "Spiral Plots"
+author: "Derenik Haghverdian"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  bookdown::html_document2:    
+    toc: true
+    toc_float: true
+---
+
+```{r setup/global chunk options, include = FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo    = TRUE, 
+                      cache   = TRUE, 
+                      message = FALSE,
+                      warning = FALSE)
+
+assign("last.warning", NULL, envir = baseenv())
+```
+
+```{r loading packages}
+library(tidyverse)
+theme_set(theme_bw())
+library(ggpubr)
+```
+
+# Spiral Plot
+
+Our goal is to create a figure similar to Figure \@ref(fig:spiral-plot).
+
+```{r spiral-plot, echo = FALSE, fig.cap = "Spiral plot created with Desmos.com", fig.align='center', out.width="60%"}
+knitr::include_graphics(here::here("figures", "desmos-graph.jpeg"))
+```
+
+We need to put $N$ circles on the spiral with equation $r = \theta$ such that the circles intersect with each other only at a single point and their centers lie on the spiral.
+
+Let $R$ be the radius of these circles, and $\mathbf{c}^{(i)}$ be the center of circle $i$.
+Since the spiral starts from the origin, we can put the first circle at the origin, $\mathbf{c}^{(i)} = (0, 0)$.
+
+Based on Figure \@ref(fig:spiral-plot):
+
+$$\lVert \mathbf{c}^{(2)} - \mathbf{c}^{(1)} \lVert_2 = \lVert \mathbf{c}^{(3)} - \mathbf{c}^{(2)} \lVert_2 = \dots = \lVert \mathbf{c}^{(N)} - \mathbf{c}^{(N - 1)} \lVert_2 = 2 R$$
+
+Hence, we can find $\mathbf{c} ^ {(i)}$ by the applying the Pythagorean theorem and solving for $r$:
+
+$$
+\begin{aligned}
+\left( \mathbf{c}^{(i + 1)}_x - \mathbf{c}^{(i)}_x \right)^2 + \left( \mathbf{c}^{(i + 1)}_y - \mathbf{c}^{(i)}_y \right)^2 & = 4 R^2
+\end{aligned}
+$$
+
+which in polar coordinates is equivalent to:
+
+$$
+\begin{aligned}
+\left( r_{i + 1} \cos r_{i + 1} - \mathbf{c}^{(i)}_x \right)^2 + \left( r_{i + 1} \sin r_{i + 1} - \mathbf{c}^{(i)}_y \right)^2 & = 4 R^2
+\end{aligned}
+$$
+
+where $r_{i + 1} \in \{ r_i, 2 R + r_i \}$.
+
+# Creating Spiral Plots
+
+## Finding the Center of the Next Circle
+
+```{r find next center}
+find_centers <- function(N, R) {
+  
+  centers <- matrix(0, nrow = N, ncol = 2)
+  
+  # lower and upper bound of `r`
+  int_lower <- 0.001
+  int_upper <- 2 * R + int_lower
+  
+  for (n in 2:N) {
+    eq <- uniroot(f = 
+                    function(r) 
+                      (r * cos(r) - centers[n - 1, 1])^2 +
+                      (r * sin( r) - centers[n - 1, 2])^2 - 
+                      4 * R ^ 2,
+                  lower = int_lower,
+                  upper = int_upper)
+    
+    r <- eq$root
+    centers[n, ] <- c(r * cos(r), r * sin(r))
+    
+    int_lower <- r
+    int_upper <- 2 * R + r
+  }
+  
+  centers
+}
+```
+
+## Plotting the Circles on the Spiral
+
+```{r create spiral plot}
+create_spiral_plot <- function(N, R = 0.05) {
+  
+  centers <- find_centers(N = N, R = R)
+  
+  fig <- ggplot(data = tibble(theta = seq(0, 2 * pi, length.out = 30),
+                              x = R * cos(theta) + centers[1, 1],
+                              y = R * sin(theta) + centers[1, 2]),
+                aes(x = x, y = y)) +
+    geom_path() +
+    coord_fixed() +
+    theme_void()
+  
+  for (n in 2:N) {
+    fig <- fig + 
+      geom_path(data = tibble(theta = seq(0, 2 * pi, 
+                                          length.out = 100),
+                              x = R * cos(theta) + centers[n, 1],
+                              y = R * sin(theta) + centers[n, 2]),
+                aes(x = x, y = y))
+    }
+  
+  fig
+}
+```
+
+## Example
+
+```{r example1, fig.cap = "Spiral plot with 50 circles", fig.align='center', out.width="60%"}
+create_spiral_plot(N = 50)
+```
+
+We see that in Figure \@ref(fig:example1) that the spiral needs to be squeezed such that it is tighter and the circles are closer to each other. 
+
+To make the spiral tighter, we need to change the equation of the spiral to:
+
+$$r = \tau \theta$$
+
+where $\tau$ controls the overall size of the spiral.
+In this case, the equations change to:
+
+$$
+\begin{aligned}
+\left( r_{i + 1} \cos \tau r_{i + 1} - \mathbf{c}^{(i)}_x \right)^2 + \left( r_{i + 1} \sin \tau r_{i + 1} - \mathbf{c}^{(i)}_y \right)^2 & = 4 R^2
+\end{aligned}
+$$
+
+where $r_{i + 1} \in \{ r_i, 2 R + r_i \}$.
+
+# Creating Spiral Plots with Tightness Control
+
+## Finding the Center of All Circle
+
+```{r find all centers with tightness control}
+find_centers <- function(N, R = 0.05, tau = 60) {
+  
+  centers <- matrix(0, nrow = N, ncol = 2)
+  
+  int_lower <- 0.001
+  int_upper <- 2 * R + int_lower
+  
+  for (n in 2:N) {
+
+    eq <- uniroot(f = 
+                    function(r) 
+                      (r * cos(tau * r) - centers[n - 1, 1])^2 +
+                      (r * sin(tau * r) - centers[n - 1, 2])^2 - 
+                      4 * R ^ 2,
+                  lower = int_lower,
+                  upper = int_upper)
+    
+    r <- eq$root
+    centers[n, ] <- c(r * cos(tau * r), r * sin(tau * r))
+    
+    int_lower <- r
+    int_upper <- 2 * R + r
+  }
+  
+  centers
+}
+```
+
+## Plotting the Circles on the Spiral with Tightness Control
+
+```{r create spiral plot with tightness control}
+create_spiral_plot <- function(N, R = 0.05, tau = 60) {
+  
+  centers <- find_centers(N = N, R = R, tau = tau)
+  
+  fig <- ggplot(data = tibble(theta = seq(0, 2 * pi, length.out = 100),
+                              x = R * cos(theta) + centers[1, 1],
+                              y = R * sin(theta) + centers[1, 2]),
+                aes(x = x, y = y)) +
+    geom_path() +
+    coord_fixed() +
+    xlim(-0.8, 0.8) +
+    ylim(-0.8, 0.8) +
+    theme_void()
+  
+  for (n in 2:N) {
+    fig <- fig + 
+      geom_path(data = tibble(theta = seq(0, 2 * pi, 
+                                          length.out = 30),
+                              x = R * cos(theta) + centers[n, 1],
+                              y = R * sin(theta) + centers[n, 2]),
+                aes(x = x, y = y))
+    }
+  
+  fig
+}
+```
+
+## Example
+
+```{r example2, fig.cap = "A tighter spiral plot with 50 circles", fig.align='center', out.width="60%"}
+create_spiral_plot(N = 50)
+```
+
+We see that in Figure \@ref(fig:example2) that the spiral is tighter now and the circles are closer to each other.
+
+# Creating Spiral Plots from Real Data
+
+```{r import data, include = FALSE}
+prop_odor_b <- read_csv(here::here("data", "prop_odor_b.csv"), 
+                        col_names = FALSE)
+prop_odor_c <- read_csv(here::here("data", "prop_odor_c.csv"), 
+                        col_names = FALSE)
+prop_odor_d <- read_csv(here::here("data", "prop_odor_d.csv"), 
+                        col_names = FALSE)
+```
+
+```{r tidy data, include = FALSE}
+num_trials <- c(210, 165, 166)
+
+odor_b_freq <- as.matrix(prop_odor_b * num_trials[1])
+odor_c_freq <- as.matrix(prop_odor_c * num_trials[2])
+odor_d_freq <- as.matrix(prop_odor_d * num_trials[3])
+```
+
+## Spiral-plots for Real Data
+
+```{r counts per odor}
+odor_b_counts <- c(55, 34, 34, 14, 20, 26, 16, 26, 37, 30, 
+                   71, 130, 132, 159, 117, 75, 58, 53, 47, 68, 
+                   23, 28, 31, 23, 48, 76, 92, 90, 93, 64, 
+                   61, 18, 13, 14, 25, 33, 44, 41, 33, 48)
+
+odor_c_counts <- c(41, 22, 14, 13, 12, 14, 12, 14, 18, 28, 
+                   51, 85, 70, 43, 26, 22, 19, 17, 17, 36, 
+                   23, 27, 60, 72, 70, 64, 66, 58, 80, 53, 
+                   50, 31, 21, 37, 57, 65, 68, 76, 50, 48)
+
+odor_d_counts <- c(23, 28, 12, 11, 7, 10, 9, 17, 22, 25, 
+                   48, 55, 38, 33, 23, 19, 23, 20, 24, 46, 
+                   28, 24, 54, 48, 59, 55, 43, 51, 55, 35,
+                   67, 59, 62, 74, 77, 82, 91, 78, 65, 60)
+```
+
+```{r list of spiral plots per odor, eval = FALSE}
+odor_b_figs <- list()
+odor_c_figs <- list()
+odor_d_figs <- list()
+
+for (i in 1:length(odor_b_counts)) {
+  odor_b_figs[[i]] <- create_spiral_plot(N = odor_b_counts[i])
+  odor_c_figs[[i]] <- create_spiral_plot(N = odor_c_counts[i])
+  odor_d_figs[[i]] <- create_spiral_plot(N = odor_d_counts[i])
+}
+```
+
+We can see the spiral plot for odors B, C, and D in Figures \@ref(fig:odor-b-figs), \@ref(fig:odor-c-figs), and \@ref(fig:odor-d-figs), respectively. 
+
+```{r png files, eval = FALSE, include = FALSE}
+ggsave(filename = here::here("figures", "odor-b-figs.png"),
+       plot = ggarrange(plotlist = odor_b_figs, 
+                        nrow = 4, 
+                        ncol = 10),
+       width = 10, 
+       height = 5)
+
+ggsave(filename = here::here("figures", "odor-c-figs.png"),
+       plot = ggarrange(plotlist = odor_c_figs, 
+                        nrow = 4, 
+                        ncol = 10),
+       width = 10, 
+       height = 5)
+
+ggsave(filename = here::here("figures", "odor-d-figs.png"),
+       plot = ggarrange(plotlist = odor_d_figs, 
+                        nrow = 4, 
+                        ncol = 10),
+       width = 10, 
+       height = 5)
+```
+
+```{r odor-b-figs, fig.cap = "Counts during odor B presentation", echo = FALSE, out.width="80%", fig.align='center'}
+knitr::include_graphics(here::here("figures", "odor-b-figs.png"))
+```
+
+```{r odor-c-figs, fig.cap = "Counts during odor C presentation", echo = FALSE, out.width="80%", fig.align='center'}
+knitr::include_graphics(here::here("figures", "odor-c-figs.png"))
+```
+
+```{r odor-d-figs, fig.cap = "Counts during odor D presentation", echo = FALSE, out.width="80%", fig.align='center'}
+knitr::include_graphics(here::here("figures", "odor-d-figs.png"))
+```
