@@ -2,4 +2,6 @@
 
 Derenik Haghverdian, University of California Irvine
 
-![](figures/example1-spiral.png)
+Creating plots similar to the plots below:
+
+![](figures/example1-spiral.png) ![](figures/example2-spiral.png)
