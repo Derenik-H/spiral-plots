@@ -28,6 +28,6 @@
 # R Environment Variables
 .Renviron
 
-
+*.html
+*.eps
 data/
-figures/
